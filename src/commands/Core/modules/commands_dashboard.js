@@ -99,9 +99,9 @@ export function buildCategoryEmbed(category, guild, page = 0) {
       : `${category.disabledCount} of ${category.totalCount} disabled`;
 
   const allCommands = category.commands || [];
-  const pageCount = Math.max(1, Math.ceil(allCommands.filter((command) => !command.protected).length / 25));
+  const pageCount = Math.max(1, Math.ceil(allCommands.length / 25));
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
-  const visibleCommands = allCommands.filter((command) => !command.protected).slice(safePage * 25, (safePage + 1) * 25);
+  const visibleCommands = allCommands.slice(safePage * 25, (safePage + 1) * 25);
   const commandLines = visibleCommands.map((command) => {
     const enabled = category.enabledCommands.includes(command.name);
     const icon = enabled ? STATUS.enabled : STATUS.disabled;
@@ -169,10 +169,10 @@ function buildOverviewComponents(snapshot) {
 
 function buildCategoryComponents(category, page = 0) {
   const rows = [];
-  const commands = (category.commands || []).filter((command) => !command.protected);
+  const commands = category.commands || [];
   const pageCount = Math.max(1, Math.ceil(commands.length / 25));
   const safePage = Math.min(Math.max(0, page), pageCount - 1);
-  const pageCommands = commands.slice(safePage * 25, (safePage + 1) * 25);
+  const pageCommands = commands.slice(safePage * 25, (safePage + 1) * 25).filter((command) => !command.protected);
 
   if (pageCommands.length) {
     const menu = new StringSelectMenuBuilder()
