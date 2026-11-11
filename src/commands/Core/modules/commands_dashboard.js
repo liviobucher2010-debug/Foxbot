@@ -1,4 +1,5 @@
 import {
+  PermissionFlagsBits,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -7,7 +8,6 @@ import {
 import { createEmbed } from '../../../utils/embeds.js';
 import { getGuildConfig } from '../../../services/guildConfig.js';
 import {
-  buildCommandRegistry,
   getCommandAccessSnapshot,
   disableCategory,
   enableCategory,
@@ -234,7 +234,16 @@ export function createDashboardCollectorFilter(userId, guildId) {
 export async function handleDashboardComponent(interaction, client) {
   if (!isCommandAccessCustomId(interaction.customId)) return false;
 
-  const [, action, categoryKey, ...rest] = interaction.customId.split(':');
+  // Re-check permissions on every component interaction, not only when opening the dashboard.
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+    await interaction.reply({
+      content: 'You need the **Manage Server** permission to manage commands.',
+      ephemeral: true,
+    });
+    return false;
+  }
+
+  const [, action, categoryKey] = interaction.customId.split(':');
   let selectedCategory = categoryKey || 'overview';
 
   switch (action) {
@@ -249,6 +258,11 @@ export async function handleDashboardComponent(interaction, client) {
       const snapshot = getCommandAccessSnapshot(client, config);
       const category = snapshot.categories.find((item) => item.key === categoryKey);
       if (!category) throw new Error('The selected command category no longer exists.');
+
+      const selectedCommand = category.commands.find((command) => command.name === commandName);
+      if (!selectedCommand || selectedCommand.protected) {
+        throw new Error('That command cannot be changed from this dashboard.');
+      }
 
       if (category.enabledCommands.includes(commandName)) {
         await disableCommand(client, interaction.guildId, commandName);
