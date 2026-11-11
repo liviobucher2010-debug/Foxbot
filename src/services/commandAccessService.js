@@ -105,7 +105,7 @@ export function getCategoryRegistry(client, categoryKey = null) {
 }
 
 export function isProtectedCommand(commandName) {
-  const baseCommand = String(commandName || '').trim().toLowerCase().split(/\\s+/)[0];
+  const baseCommand = String(commandName || '').trim().toLowerCase().split(/\s+/)[0];
   return PROTECTED_COMMANDS.has(baseCommand);
 }
 
