@@ -64,7 +64,7 @@ export function buildCommandRegistry(client) {
         categories.get(categoryKey).commands.push({
           name: subcommandName,
           description: option.description || 'No description',
-          protected: false,
+          protected: isProtectedCommand(subcommandName),
           isSubcommand: true,
           parentCommand: command.data.name,
         });
@@ -77,7 +77,7 @@ export function buildCommandRegistry(client) {
             categories.get(categoryKey).commands.push({
               name: subcommandName,
               description: sub.description || 'No description',
-              protected: false,
+              protected: isProtectedCommand(subcommandName),
               isSubcommand: true,
               parentCommand: command.data.name,
             });
@@ -105,7 +105,8 @@ export function getCategoryRegistry(client, categoryKey = null) {
 }
 
 export function isProtectedCommand(commandName) {
-  return PROTECTED_COMMANDS.has(String(commandName || '').toLowerCase());
+  const baseCommand = String(commandName || '').trim().toLowerCase().split(/\\s+/)[0];
+  return PROTECTED_COMMANDS.has(baseCommand);
 }
 
 export function isCommandEnabledInConfig(config, commandName, category) {
@@ -115,8 +116,8 @@ export function isCommandEnabledInConfig(config, commandName, category) {
   const isSubcommand = normalizedName.includes(' ');
   const baseCommand = isSubcommand ? normalizedName.split(' ')[0] : normalizedName;
 
-  // Protected commands (only applies to base commands, not subcommands)
-  if (!isSubcommand && isProtectedCommand(baseCommand)) {
+  // Protected commands and all their subcommands remain available, even if their category is disabled.
+  if (isProtectedCommand(normalizedName)) {
     return true;
   }
 
@@ -226,7 +227,7 @@ export async function disableCommand(client, guildId, commandName, context = {})
     throw new Error(`Unknown command: \`${normalizedName}\`.`);
   }
 
-  if (!target.isSubcommand && isProtectedCommand(normalizedName)) {
+  if (isProtectedCommand(normalizedName)) {
     throw new Error(`The \`${normalizedName}\` command cannot be disabled.`);
   }
 
