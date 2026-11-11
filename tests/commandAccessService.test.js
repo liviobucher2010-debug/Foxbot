@@ -6,6 +6,7 @@ import {
   getCommandAccessSnapshot,
   buildCommandRegistry,
   resolveCategoryChoice,
+  isProtectedCommand,
 } from '../src/services/commandAccessService.js';
 
 const mockClient = {
@@ -78,4 +79,21 @@ test('isCommandEnabledInConfig supports subcommand-level disables', () => {
 
   assert.equal(isCommandEnabledInConfig(config, 'birthday list', 'Birthday'), false);
   assert.equal(isCommandEnabledInConfig(config, 'birthday info', 'Birthday'), true);
+});
+
+
+test('protected commands also protect all nested subcommands', () => {
+  const config = {
+    disabledCategories: { core: true },
+    disabledCommands: {
+      commands: true,
+      'commands dashboard': true,
+      'configwizard setup': true,
+    },
+  };
+
+  assert.equal(isProtectedCommand('commands dashboard'), true);
+  assert.equal(isProtectedCommand('configwizard setup'), true);
+  assert.equal(isCommandEnabledInConfig(config, 'commands dashboard', 'Core'), true);
+  assert.equal(isCommandEnabledInConfig(config, 'configwizard setup', 'Core'), true);
 });
