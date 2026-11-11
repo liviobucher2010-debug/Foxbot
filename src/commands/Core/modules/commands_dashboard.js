@@ -31,7 +31,7 @@ function getCategoryStatus(category) {
 
 function formatCommandLabel(command) {
   const name = String(command?.name || 'unknown');
-  const description = String(command?.description || '').trim();
+  const description = String(command?.description || '').trim().slice(0, 120);
   const prefix = command?.isSubcommand ? '↳ ' : '/';
   const label = `${prefix}${name}`;
   return description ? `${label} — ${description}` : label;
@@ -90,7 +90,7 @@ function buildOverviewEmbed(snapshot, guild) {
   });
 }
 
-export function buildCategoryEmbed(category, guild) {
+export function buildCategoryEmbed(category, guild, page = 0) {
   const statusIcon = getCategoryStatus(category);
   const statusText = category.categoryDisabled
     ? 'Category disabled'
@@ -98,7 +98,11 @@ export function buildCategoryEmbed(category, guild) {
       ? 'All entries enabled'
       : `${category.disabledCount} of ${category.totalCount} disabled`;
 
-  const commandLines = (category.commands || []).map((command) => {
+  const allCommands = category.commands || [];
+  const pageCount = Math.max(1, Math.ceil(allCommands.filter((command) => !command.protected).length / 25));
+  const safePage = Math.min(Math.max(0, page), pageCount - 1);
+  const visibleCommands = allCommands.filter((command) => !command.protected).slice(safePage * 25, (safePage + 1) * 25);
+  const commandLines = visibleCommands.map((command) => {
     const enabled = category.enabledCommands.includes(command.name);
     const icon = enabled ? STATUS.enabled : STATUS.disabled;
     const lock = command.protected ? ' 🔒' : '';
@@ -114,12 +118,18 @@ export function buildCategoryEmbed(category, guild) {
     },
   ];
 
-  chunkLines(commandLines).slice(0, 22).forEach((chunk, index) => {
+  chunkLines(commandLines, 900).slice(0, 5).forEach((chunk, index) => {
     fields.push({
       name: index === 0 ? '📋 Commands & Subcommands' : '📋 (cont.)',
       value: chunk,
       inline: false,
     });
+  });
+
+  fields.push({
+    name: 'Page',
+    value: `Showing page ${safePage + 1}/${pageCount} · ${allCommands.length} total entries`,
+    inline: true,
   });
 
   fields.push({
@@ -157,17 +167,20 @@ function buildOverviewComponents(snapshot) {
   return [new ActionRowBuilder().addComponents(menu)];
 }
 
-function buildCategoryComponents(category) {
+function buildCategoryComponents(category, page = 0) {
   const rows = [];
-  const commands = (category.commands || []).filter((command) => !command.protected).slice(0, 25);
+  const commands = (category.commands || []).filter((command) => !command.protected);
+  const pageCount = Math.max(1, Math.ceil(commands.length / 25));
+  const safePage = Math.min(Math.max(0, page), pageCount - 1);
+  const pageCommands = commands.slice(safePage * 25, (safePage + 1) * 25);
 
-  if (commands.length) {
+  if (pageCommands.length) {
     const menu = new StringSelectMenuBuilder()
-      .setCustomId(`${CUSTOM_ID_PREFIX}:toggle:${category.key}`)
+      .setCustomId(`${CUSTOM_ID_PREFIX}:toggle:${category.key}:${safePage}`)
       .setPlaceholder('Select a command to enable or disable')
       .setMinValues(1)
       .setMaxValues(1)
-      .addOptions(commands.map((command) => {
+      .addOptions(pageCommands.map((command) => {
         const enabled = category.enabledCommands.includes(command.name);
         return {
           label: `/${command.name}`.slice(0, 100),
@@ -177,6 +190,21 @@ function buildCategoryComponents(category) {
         };
       }));
     rows.push(new ActionRowBuilder().addComponents(menu));
+  }
+
+  if (pageCount > 1) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${CUSTOM_ID_PREFIX}:page:${category.key}:${Math.max(0, safePage - 1)}`)
+        .setLabel('Previous')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(safePage === 0),
+      new ButtonBuilder()
+        .setCustomId(`${CUSTOM_ID_PREFIX}:page:${category.key}:${Math.min(pageCount - 1, safePage + 1)}`)
+        .setLabel('Next')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(safePage >= pageCount - 1),
+    ));
   }
 
   const actions = new ActionRowBuilder().addComponents(
@@ -203,14 +231,14 @@ function buildCategoryComponents(category) {
   return rows;
 }
 
-export async function buildDashboardView(client, guildId, guild, selectedCategory = 'overview') {
+export async function buildDashboardView(client, guildId, guild, selectedCategory = 'overview', selectedPage = 0) {
   const config = await getGuildConfig(client, guildId);
   const snapshot = getCommandAccessSnapshot(client, config);
 
   if (selectedCategory && selectedCategory !== 'overview') {
     const category = snapshot.categories.find((item) => item.key === selectedCategory);
     if (category) {
-      return { embed: buildCategoryEmbed(category, guild), components: buildCategoryComponents(category) };
+      return { embed: buildCategoryEmbed(category, guild, selectedPage), components: buildCategoryComponents(category, selectedPage) };
     }
   }
 
@@ -243,12 +271,17 @@ export async function handleDashboardComponent(interaction, client) {
     return false;
   }
 
-  const [, action, categoryKey] = interaction.customId.split(':');
+  const [, action, categoryKey, pageValue] = interaction.customId.split(':');
   let selectedCategory = categoryKey || 'overview';
+  let selectedPage = Number.parseInt(pageValue, 10) || 0;
 
   switch (action) {
     case 'category':
       selectedCategory = interaction.values?.[0] || 'overview';
+      selectedPage = 0;
+      break;
+    case 'page':
+      selectedPage = Math.max(0, selectedPage);
       break;
     case 'toggle': {
       const commandName = interaction.values?.[0];
@@ -287,7 +320,7 @@ export async function handleDashboardComponent(interaction, client) {
       return false;
   }
 
-  const view = await buildDashboardView(client, interaction.guildId, interaction.guild, selectedCategory);
+  const view = await buildDashboardView(client, interaction.guildId, interaction.guild, selectedCategory, selectedPage);
   await interaction.update({ embeds: [view.embed], components: view.components });
   return true;
 }
